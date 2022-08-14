@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <input id="input" type="file" />
+    <button id="btn">上传</button>
+    <button id="cancel">暂停</button>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+
+    <script>
+      const CancelToken = axios.CancelToken
+      let cancelRequest
+
+      function __uploadFile(fd) {
+        return axios({
+          cancelToken: new CancelToken(function executor(c) {
+            cancelRequest = c
+          }),
+          url: 'http://localhost:3000/users',
+          method: 'post',
+          data: fd,
+        })
+      }
+      function __getUploadFile(name) {
+        return axios({
+          url: 'http://localhost:3000/users',
+          method: 'get',
+          params: { name },
+        })
+      }
+
+      const btn = document.getElementById('btn')
+      const btnCancel = document.getElementById('cancel')
+      const input = document.getElementById('input')
+      const cutFile = function (file) {
+        if (file.size <= 0) {
+          return
+        }
+        const fileArr = []
+        let size = 100 * 1024 * 1024
+        let star = 0
+        let end = 0
+        let fileName = file.name
+        let requestCount = 0
+        if (file.size > size) {
+          while (true) {
+            end += size
+            let newFile = file.slice(star, end)
+            star += size
+            if (!newFile.size) {
+              break
+            }
+            fileArr.push(newFile)
+          }
+        } else {
+          fileArr.push(file.slice(0))
+        }
+        let sendArr = []
+
+        for (let index = 0; index < fileArr.length; index++) {
+          const fd = new FormData()
+          fd.append('fileName', fileName)
+          fd.append('index', index)
+          fd.append('file', fileArr[index])
+          requestCount += 1
+          // __uploadFile(fd)
+          sendArr.push(fd)
+        }
+        let forNum = (num) => {
+          let count = num || 0
+          function recursionSend() {
+            if (count > sendArr.length - 1) {
+              return
+            }
+            __uploadFile(sendArr[count])
+              .then((res) => {
+                if (res.data.code === 200) {
+                  count += 1
+                  recursionSend()
+
+                  if (count >= sendArr.length) {
+                    const mergeData = new FormData()
+                    mergeData.append('fileName', fileName)
+                    mergeData.append('type', 'merge')
+                    mergeData.append('count', count)
+                    __uploadFile(mergeData).then((res) => {
+                      if (res.data.code === 200) {
+                        console.log(res.data.msg)
+                      }
+                    })
+                  }
+                }
+              })
+              .catch((err) => {
+                console.log(err, 'err')
+              })
+          }
+          recursionSend()
+        }
+
+        __getUploadFile(fileName).then((res) => {
+          if (res.data.code === 200) {
+            console.log(res.data)
+            const count = res.data.schedule
+            forNum(count)
+          }
+        })
+      }
+
+      btn.onclick = function (e) {
+        cutFile(input.files[0])
+        console.log(cancelRequest)
+      }
+
+      btnCancel.onclick = function (e) {
+        console.log(cancelRequest)
+        cancelRequest()
+      }
+    </script>
+  </body>
+</html>
